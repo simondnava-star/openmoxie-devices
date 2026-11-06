@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Sim Moxie — a robot in the browser</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:#171c24; --panel2:#1f2631; --line:#2c3542;
+    --text:#e8edf4; --dim:#93a1b3; --accent:#ffb454; --good:#3ddc84; --bad:#ff6b6b; --warn:#ffd166;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .wrap{max-width:560px;margin:0 auto;padding:14px 14px 40px}
+  header{display:flex;align-items:center;justify-content:space-between;margin:4px 0 10px}
+  h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
+  h1 .sub{display:block;font-size:12px;color:var(--dim);font-weight:400;margin-top:2px}
+  .pill{display:inline-flex;align-items:center;gap:7px;background:var(--panel);border:1px solid var(--line);
+    padding:6px 11px;border-radius:999px;font-size:13px;white-space:nowrap}
+  .dot{width:9px;height:9px;border-radius:50%;background:#5a6675}
+  .dot.on{background:var(--good);box-shadow:0 0 8px var(--good)}
+  .dot.busy{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+  .dot.off{background:var(--bad)}
+  .stage{background:radial-gradient(120% 100% at 50% 0%, #232d3d 0%, var(--panel) 62%);
+    border:1px solid var(--line);border-radius:22px;padding:16px 14px 12px;text-align:center}
+  .headbob{animation:bob 4.2s ease-in-out infinite;transform-origin:50% 60%}
+  .asleep .headbob{animation:none}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+  .eye{transition:transform .12s ease;transform-box:fill-box;transform-origin:center}
+  .blink .eye{transform:scaleY(.08)}
+  .asleepEyes .eye{transform:scaleY(.07)}
+  .thinking .eye{transform:translate(-3px,-4px)}
+  .happy .eye{transform:scaleY(.55)}
+  #mouthTalk{display:none}
+  .speaking #mouthTalk{display:block}
+  .speaking #mouthSmile{display:none}
+  .zzz{font-size:20px;fill:var(--dim);opacity:0;font-weight:700}
+  .pupil{transition:transform .35s ease}
+  #brows{transition:transform .25s ease}
+  .speaking #brows{transform:translateY(-3px)}
+  #face{transition:transform .7s ease}
+  .armR{transform-box:fill-box;transform-origin:50% 10%}
+  .waving .armR{animation:waveArm .45s ease-in-out 3}
+  @keyframes waveArm{0%,100%{transform:rotate(0deg)}50%{transform:rotate(-38deg)}}
+  .asleep .zzz{animation:zfloat 3s ease-in-out infinite}
+  .asleep .zzz.z2{animation-delay:1s}.asleep .zzz.z3{animation-delay:2s}
+  @keyframes zfloat{0%{opacity:0;transform:translateY(4px)}30%{opacity:.9}100%{opacity:0;transform:translateY(-10px)}}
+  .mode{margin-top:8px;font-size:15px;font-weight:600}
+  .badges{margin-top:5px;min-height:20px}
+  .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);
+    color:var(--dim);margin:0 2px}
+  .badge.hot{color:#14181f;background:var(--accent);border-color:var(--accent);font-weight:700}
+  .bubble{background:var(--panel2);border:1px solid var(--line);border-radius:14px;
+    padding:10px 12px;margin-top:12px;text-align:left;min-height:44px;font-size:15px;line-height:1.35}
+  .bubble .who{font-size:11px;color:var(--accent);font-weight:700;letter-spacing:.4px;text-transform:uppercase}
+  .heard{margin-top:7px;font-size:13px;color:var(--dim);text-align:left;min-height:17px}
+  .row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  button{background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;
+    padding:11px 13px;font-size:15px;cursor:pointer;flex:1 1 auto}
+  button:active{transform:translateY(1px)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#181206;font-weight:700}
+  button:disabled{opacity:.45;cursor:default}
+  .sayrow{display:flex;gap:8px;margin-top:12px}
+  .sayrow input{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    color:var(--text);padding:11px 12px;font-size:16px;min-width:0}
+  .sayrow button{flex:0 0 auto}
+  details{background:var(--panel);border:1px solid var(--line);border-radius:14px;margin-top:14px;padding:10px 12px}
+  summary{cursor:pointer;font-weight:600;font-size:14px}
+  .fields{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .fields label{font-size:12px;color:var(--dim);display:block}
+  .fields input{width:100%;margin-top:3px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:9px;color:var(--text);padding:9px;font-size:15px}
+  .fields .full{grid-column:1/-1}
+  #log{background:#0a0d11;border:1px solid var(--line);border-radius:12px;margin-top:12px;
+    padding:9px 11px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.5;
+    color:#a9b7c6;height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-word}
+  #log .tx{color:#7fd08a}#log .rx{color:#8ab8ff}#log .err{color:var(--bad)}#log .sys{color:#c9a86a}
+  #scanOverlay{position:fixed;inset:0;background:rgba(4,6,9,.94);display:none;z-index:50;
+    flex-direction:column;align-items:center;justify-content:center;padding:20px}
+  #scanOverlay.open{display:flex}
+  #scanVideo{width:min(88vw,420px);border-radius:16px;border:2px solid var(--accent);background:#000}
+  #scanOverlay p{color:var(--text);font-size:15px;text-align:center}
+  .hint{font-size:12.5px;color:var(--dim);margin-top:10px;line-height:1.45}
+  #qrDrop{margin-top:10px;border:1.5px dashed var(--line);border-radius:12px;padding:10px 12px;
+    font-size:13px;color:var(--dim);line-height:1.45;cursor:pointer}
+  #qrDrop.over{border-color:var(--accent);color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Sim Moxie<span class="sub">a robot in the browser, connected to your OpenMoxie</span></h1>
+    <span class="pill"><span id="connDot" class="dot"></span><span id="connText">Offline</span></span>
+  </header>
+
+  <div class="stage" id="stage">
+    <svg id="face" width="300" height="300" viewBox="0 0 300 300" role="img" aria-label="Sim Moxie face">
+      <defs>
+        <linearGradient id="hoodGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#35a7b5"/>
+          <stop offset=".55" stop-color="#22808f"/>
+          <stop offset="1" stop-color="#17616f"/>
+        </linearGradient>
+        <radialGradient id="faceGrad" cx=".5" cy=".38" r=".85">
+          <stop offset="0" stop-color="#ffffff"/>
+          <stop offset=".7" stop-color="#eef8f6"/>
+          <stop offset="1" stop-color="#d9ebe8"/>
+        </radialGradient>
+        <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#1d7482"/>
+          <stop offset="1" stop-color="#12525e"/>
+        </linearGradient>
+        <clipPath id="faceClip"><ellipse cx="150" cy="142" rx="84" ry="73"/></clipPath>
+      </defs>
+      <g class="headbob">
+        <rect x="48" y="244" width="17" height="46" rx="8.5" fill="#0f4a54" transform="rotate(10 56 248)"/>
+        <g class="armR"><rect x="235" y="244" width="17" height="46" rx="8.5" fill="#0f4a54" transform="rotate(-10 244 248)"/></g>
+        <path d="M70 300 L78 240 Q150 220 222 240 L230 300 Z" fill="url(#bodyGrad)"/>
+        <rect x="116" y="256" width="68" height="6" rx="3" fill="#8ff2fb"/>
+        <circle cx="150" cy="265" r="3.4" fill="#8ff2fb"/>
+        <ellipse cx="63" cy="142" rx="7" ry="13" fill="#14505c"/>
+        <ellipse cx="237" cy="142" rx="7" ry="13" fill="#14505c"/>
+        <path d="M150 4 C178 44 236 78 236 138 C236 196 198 228 150 228 C102 228 64 196 64 138 C64 78 122 44 150 4 Z"
+              fill="url(#hoodGrad)" stroke="#0e5563" stroke-width="3"/>
+        <ellipse cx="150" cy="142" rx="84" ry="73" fill="url(#faceGrad)"/>
+        <ellipse cx="116" cy="102" rx="46" ry="25" fill="#ffffff" opacity=".35" transform="rotate(-16 116 102)"/>
+        <polygon points="150,50 161,56 161,68 150,74 139,68 139,56" fill="#20343a" stroke="#0e5563" stroke-width="2"/>
+        <g id="brows">
+        <path d="M94 108 Q111 97 128 105" stroke="#33555c" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        <path d="M172 105 Q189 97 206 108" stroke="#33555c" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+        </g>
+        <g id="eyeL" class="eye">
+          <ellipse cx="112" cy="138" rx="15" ry="21" fill="#ffffff" stroke="#22454d" stroke-width="3.5"/>
+          <circle class="pupil" cx="111" cy="136" r="6.2" fill="#22454d"/>
+          <circle cx="113.5" cy="133" r="2.2" fill="#ffffff"/>
+        </g>
+        <g id="eyeR" class="eye">
+          <ellipse cx="188" cy="138" rx="15" ry="21" fill="#ffffff" stroke="#22454d" stroke-width="3.5"/>
+          <circle class="pupil" cx="187" cy="136" r="6.2" fill="#22454d"/>
+          <circle cx="189.5" cy="133" r="2.2" fill="#ffffff"/>
+        </g>
+        <ellipse cx="88" cy="168" rx="10" ry="6" fill="#ff9db0" opacity=".45"/>
+        <ellipse cx="212" cy="168" rx="10" ry="6" fill="#ff9db0" opacity=".45"/>
+        <path id="mouthSmile" d="M 132 178 Q 150 190 168 178" stroke="#33555c" stroke-width="4"
+              fill="none" stroke-linecap="round"/>
+        <ellipse id="mouthTalk" cx="150" cy="182" rx="10" ry="5" fill="#33555c"/>
+        <image id="photoImg" x="66" y="69" width="168" height="146" preserveAspectRatio="xMidYMid slice" clip-path="url(#faceClip)" style="display:none"/>
+        <text class="zzz z1" x="242" y="86">Z</text>
+        <text class="zzz z2" x="256" y="66" font-size="16">Z</text>
+        <text class="zzz z3" x="246" y="48" font-size="13">Z</text>
+      </g>
+    </svg>
+    <div class="mode" id="modeText">Not connected</div>
+    <div class="badges"><span class="badge" id="puppetBadge">PUPPET OFF</span><span class="badge" id="moduleBadge">NO MODULE</span></div>
+    <div class="bubble"><span class="who">Sim Moxie says</span><div id="saysText">Connect me to your OpenMoxie and I will wake up here.</div></div>
+    <div class="heard" id="heardText"></div>
+    <div class="row" style="justify-content:center">
+      <button id="btnPhoto">🖼️ Show a photo</button>
+      <button id="btnPhotoClose" style="display:none">✖ Close photo</button>
+      <input id="photoFile" type="file" accept="image/*" style="display:none">
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="btnWake">☀️ Wake</button>
+    <button id="btnSleep">🌙 Sleep</button>
+    <button id="btnStop">⏹ Stop talking</button>
+  </div>
+  <div class="row">
+    <button data-mod="OPENMOXIE_CHAT">💬 Chat</button>
+    <button data-mod="OPENMOXIE_TRIVIA">❓ Trivia</button>
+    <button data-mod="OPENMOXIE_JOKES">😂 Jokes</button>
+    <button data-mod="OPENMOXIE_HOMEWORK">📚 Homework</button>
+    <button data-mod="OPENMOXIE_REASONING">🧠 Reasoning</button>
+  </div>
+  <div class="sayrow">
+    <input id="sayInput" type="text" placeholder="Type what you say to her…" autocomplete="off">
+    <button id="btnSay" class="primary">Say it</button>
+  </div>
+  <p class="hint">The buttons and your typed words travel the same road the real robot uses.
+    Wake / Chat / Trivia / Jokes from the Control Center or your phone shortcuts land here too,
+    and the puppet page can make her talk. Typing stands in for the microphone for now.</p>
+
+  <details id="settingsBox" open>
+    <summary>Connection</summary>
+    <div class="fields">
+      <label class="full">OpenMoxie computer (host)<input id="inHost" type="text" value="192.168.1.172" autocomplete="off"></label>
+      <label>Browser port (WebSocket)<input id="inPort" type="number" value="9001"></label>
+      <label>Robot ID<input id="inDevice" type="text" value="d_simmoxie" autocomplete="off"></label>
+    </div>
+    <div class="row">
+      <button id="btnConnect" class="primary">Connect</button>
+      <button id="btnScan">📷 Scan migration QR</button>
+      <button id="btnQrPic">🖼️ QR from a picture</button>
+      <input id="qrFile" type="file" accept="image/*" style="display:none">
+    </div>
+    <div id="qrDrop">📋 Snip the migration QR with the Snipping Tool, copy it, then press Ctrl+V anywhere on this page — or drop the picture here, or tap here to pick the picture file.</div>
+    <p class="hint">Scan or paste the migration QR from the OpenMoxie Control Center (Endpoint page) and she will
+      find the server herself, like a real Moxie. The QR names the robot port; the browser port above is the
+      extra door added for browsers, so it stays 9001.</p>
+    <div class="fields">
+      <label class="full">Watch a robot on this screen — its ID<input id="inWatchId" type="text" value="d_openmoxiesim1234567890" autocomplete="off"></label>
+    </div>
+    <div class="row">
+      <button id="btnWatch">📺 Watch live</button>
+    </div>
+    <p class="hint">Watching mirrors another Sim Moxie — for example the one running on the PC. Her face,
+      her words and her naps appear here live, and this screen does not become a robot itself.</p>
+  </details>
+
+  <div id="log" aria-label="event log"></div>
+</div>
+
+<div id="scanOverlay">
+  <p>Point the camera at the <b>migration QR</b><br>from the OpenMoxie Control Center</p>
+  <video id="scanVideo" playsinline muted></video>
+  <div class="row" style="width:min(88vw,420px)"><button id="btnScanCancel">Cancel</button></div>
+  <p id="scanMsg" style="color:var(--warn)"></p>
+</div>
+
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+<script>
+"use strict";
+/* ============================================================
+   Sim Moxie — a software robot that speaks the OpenMoxie protocol.
+   Protocol notes (from the OpenMoxie server code):
+   - Robot -> server topics:  /devices/<id>/state            (JSON)
+                              /devices/<id>/events/remote-chat   (JSON volleys)
+                              /devices/<id>/events/client-service-activity-log (JSON)
+   - Server -> robot topics:  /devices/<id>/config           (JSON)
+                              /devices/<id>/commands/<name>  (JSON; "zmq" is binary protobuf)
+   - A volley request:  {event_id, backend:"router", command:"prompt"|"continue",
+                         module_id, content_id, speech?}
+   - A volley response: {command:"remote_chat", output:{text, markup},
+                         response_actions:[{action?, module_id?, content_id?, output_type}]}
+   - Puppet arrives as commands/telehealth {message:{action:"PLAY_OUTPUT", output:{text}}}
+     or {message:{action:"INTERRUPT"}}.
+   ============================================================ */
+
+function uuid(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c=>{
+    const r = Math.random()*16|0, v = c==="x" ? r : (r&0x3|0x8); return v.toString(16);
+  });
+}
+
+/* ---- tiny protobuf reader: enough for ServiceConfiguration2 ----
+   fields: 1 gcp_project (string), 8 mqtt_host (string),
+           11 override_port (varint), 12 disable_verify (bool)  */
+function decodeProto(buf){
+  const out = {}; let i = 0;
+  const varint = ()=>{ let v = 0, s = 0;
+    while (i < buf.length){ const b = buf[i++]; v += (b & 0x7f) * Math.pow(2, s); s += 7; if (!(b & 0x80)) break; }
+    return v; };
+  while (i < buf.length){
+    const tag = varint(), field = tag >> 3, wire = tag & 7;
+    if (wire === 0){ out[field] = varint(); }
+    else if (wire === 2){ const len = varint(); out[field] = buf.slice(i, i+len); i += len; }
+    else if (wire === 1){ i += 8; }
+    else if (wire === 5){ i += 4; }
+    else break;
+  }
+  return out;
+}
+function parseMigrationQR(text){
+  text = (text || "").trim();
+  if (text.startsWith("PA")) return { error: "That is the Wi-Fi QR. I need the migration QR (Endpoint page)." };
+  let obj = null;
+  try { obj = JSON.parse(text); } catch(e) { /* not JSON */ }
+  const param = obj && obj.debug && obj.debug.param;
+  if (!param) return { error: "That QR is not a migration QR." };
+  let bytes;
+  try { bytes = Uint8Array.from(atob(param), c => c.charCodeAt(0)); }
+  catch(e) { return { error: "Could not decode that QR." }; }
+  const f = decodeProto(bytes);
+  const dec = new TextDecoder();
+  const host = f[8] ? dec.decode(f[8]) : null;
+  const tlsPort = f[11] || 8883;
+  if (!host) return { error: "The QR did not name a server host." };
+  return { host, tlsPort };
+}
+
+/* ==================== SimRobot: protocol core ==================== */
+class SimRobot {
+  constructor(hooks){
+    this.h = hooks;                 // {log(cls,msg), onStatus(), speak(text,opts), stopSpeaking()}
+    this.client = null;
+    this.connected = false;
+    this.deviceId = "d_simmoxie";
+    this.mode = "offline";          // offline | active | sleep
+    this.currentModule = null;      // {module_id, content_id}
+    this.modules = [];              // from the server's modules answer
+    this.wakeModule = null;         // from the schedule answer
+    this.puppet = false;
+    this.pendingVolley = null;      // {event_id, timer}
+    this.pendingSpeech = null;      // typed words waiting for the current exchange to finish
+    this.speaking = false;
+  }
+  log(cls, msg){ this.h.log(cls, msg); }
+
+  connect(host, port){
+    this.disconnect(true);
+    const url = "ws://" + host + ":" + port;
+    this.log("sys", "Connecting to " + url + " as " + this.deviceId + " …");
+    const client = mqtt.connect(url, {
+      clientId: this.deviceId, clean: true, keepalive: 60,
+      reconnectPeriod: 4000, connectTimeout: 15000,
+    });
+    this.client = client;
+    client.on("connect", ()=> this._onConnect());
+    client.on("reconnect", ()=> this.log("sys", "Reconnecting…"));
+    client.on("error", (e)=> this.log("err", "Connection error: " + (e && e.message ? e.message : e)));
+    client.on("close", ()=>{
+      if (this.connected){ this.connected = false; this.mode = "offline"; this.h.onStatus(); }
+      this.log("sys", "Connection closed.");
+    });
+    client.on("message", (topic, payload)=> this._onMessage(topic, payload));
+  }
+  disconnect(silent){
+    if (this.client){ try { this.client.end(true); } catch(e){} this.client = null; }
+    this.connected = false; this.mode = "offline";
+    if (!silent) this.h.onStatus();
+  }
+
+  _onConnect(){
+    this.connected = true;
+    this.log("sys", "Connected to the broker.");
+    const base = "/devices/" + this.deviceId;
+    this.client.subscribe([base + "/commands/#", base + "/config"], ()=>{
+      this.log("sys", "Listening for commands.");
+    });
+    this.setMode("active");
+    // Ask the server what conversation modules it hosts (the robot asks on boot).
+    this._publishEvent("remote-chat", { backend: "data", query: { query: "modules" }, event_id: uuid() });
+    // Ask for the schedule (it carries the wake module set by the Control Center).
+    this._publishEvent("client-service-activity-log",
+      { subtopic: "query", query: "schedule", request_id: uuid() });
+    this.h.onStatus();
+  }
+
+  setMode(mode){
+    this.mode = mode;
+    if (this.connected){
+      this.client.publish("/devices/" + this.deviceId + "/state",
+        JSON.stringify({ mode: mode, battery_level: 100 }));
+      this.log("tx", "state → mode=" + mode);
+    }
+    this.h.onStatus();
+  }
+
+  _publishEvent(name, obj){
+    if (!this.connected) return;
+    this.client.publish("/devices/" + this.deviceId + "/events/" + name, JSON.stringify(obj));
+  }
+
+  /* ---------- conversation volleys ---------- */
+  sendVolley(command, speech){
+    if (!this.connected) { this.log("err", "Not connected."); return; }
+    if (!this.currentModule) this.currentModule = this._homeModule();
+    const req = {
+      event_id: uuid(), backend: "router", command: command,
+      module_id: this.currentModule.module_id, content_id: this.currentModule.content_id,
+    };
+    if (speech) req.speech = speech;
+    this._publishEvent("remote-chat", req);
+    this.log("tx", "volley " + command + " → " + req.module_id + (speech ? "  “" + speech + "”" : ""));
+    this._armVolleyTimer(req.event_id);
+    this.h.onStatus();
+  }
+  _armVolleyTimer(eventId){
+    this._clearVolleyTimer();
+    this.pendingVolley = { event_id: eventId };
+    this.pendingVolley.timer = setTimeout(()=>{
+      this.log("err", "The server did not answer that one (45s).");
+      this.pendingVolley = null; this.h.onStatus();
+    }, 45000);
+    this.h.onStatus();
+  }
+  _clearVolleyTimer(){
+    if (this.pendingVolley && this.pendingVolley.timer) clearTimeout(this.pendingVolley.timer);
+  }
+  _homeModule(){
+    const chat = this.modules.find(m => m.module_id === "OPENMOXIE_CHAT");
+    if (chat) return { module_id: chat.module_id, content_id: chat.content_id };
+    if (this.modules.length) return { module_id: this.modules[0].module_id, content_id: this.modules[0].content_id };
+    return { module_id: "OPENMOXIE_CHAT", content_id: "default" };
+  }
+  startModule(moduleId, contentId){
+    const known = this.modules.find(m => m.module_id === moduleId);
+    this.currentModule = { module_id: moduleId, content_id: contentId || (known ? known.content_id : "default") };
+    if (this.mode !== "active") this.setMode("active");
+    this.sendVolley("prompt");
+  }
+  sayWords(text){
+    if (this.mode === "sleep"){ this.log("sys", "She is asleep; wake her first."); return; }
+    if (this.pendingVolley){ this.pendingSpeech = text; this.log("sys", "Queued: “" + text + "”"); return; }
+    this.sendVolley("continue", text);
+  }
+  wake(){
+    // Same road as the wakeup command: report active, then open the wake module.
+    this.setMode("active");
+    const target = this.wakeModule || this.currentModule || this._homeModule();
+    this.currentModule = { module_id: target.module_id, content_id: target.content_id || "default" };
+    this.sendVolley("prompt");
+  }
+  goSleep(){
+    this.h.stopSpeaking();
+    this._clearVolleyTimer(); this.pendingVolley = null; this.pendingSpeech = null;
+    this.setMode("sleep");
+  }
+
+  /* ---------- incoming server traffic ---------- */
+  _onMessage(topic, payload){
+    const parts = topic.split("/");           // ["", "devices", id, kind, name?]
+    const kind = parts[3], name = parts[4] || "";
+    if (kind === "config"){
+      let cfg = {}; try { cfg = JSON.parse(payload.toString()); } catch(e){}
+      this.puppet = !!(cfg && cfg.moxie_mode === "TELEHEALTH");
+      this.log("rx", "config received (puppet " + (this.puppet ? "ON" : "off") + ")");
+      this.h.onStatus(); return;
+    }
+    if (kind !== "commands") return;
+    if (name === "zmq"){ this.log("rx", "zmq packet (microphone channel — not used yet)"); return; }
+    let msg = null;
+    try { msg = JSON.parse(payload.toString()); } catch(e){ this.log("err", "Unparseable command on " + name); return; }
+    if (name === "wakeup"){ this.log("rx", "command: wakeup"); this.wake(); return; }
+    if (name === "telehealth"){ this._onTelehealth(msg); return; }
+    if (name === "query_result"){ this._onQueryResult(msg); return; }
+    if (name === "remote_chat"){ this._onRemoteChat(msg); return; }
+    this.log("rx", "command: " + name + " " + JSON.stringify(msg).slice(0, 120));
+  }
+
+  _onQueryResult(msg){
+    if (msg.query === "schedule" && msg.schedule){
+      const wm = msg.schedule.wake_module;
+      if (wm && wm.module_id){
+        this.wakeModule = { module_id: wm.module_id, content_id: wm.content_id || "default" };
+        this.log("rx", "schedule received — wake opens " + wm.module_id);
+      } else this.log("rx", "schedule received");
+    } else this.log("rx", "query_result: " + (msg.query || "?"));
+  }
+
+  _onTelehealth(msg){
+    const m = msg.message || {};
+    if (m.action === "INTERRUPT"){
+      this.log("rx", "telehealth: INTERRUPT");
+      this.h.stopSpeaking();
+    } else if (m.action === "PLAY_OUTPUT" && m.output && m.output.text){
+      this.log("rx", "telehealth: PLAY “" + m.output.text + "”");
+      this._reportPuppet("PLAYING");
+      this.h.speak(m.output.text, { puppet: true, done: ()=> this._reportPuppet("READY") });
+    } else this.log("rx", "telehealth: " + JSON.stringify(m).slice(0, 120));
+  }
+  _reportPuppet(state){
+    this._publishEvent("client-service-activity-log",
+      { subtopic: "telehealth", message: { state: state } });
+  }
+
+  _onRemoteChat(msg){
+    // Modules answer?
+    if (msg.query_data && msg.query_data.modules){
+      this.modules = [];
+      msg.query_data.modules.forEach(mod=>{
+        const mid = mod.info && mod.info.id;
+        (mod.content_infos || []).forEach(ci=>{
+          this.modules.push({ module_id: mid, content_id: (ci.info && ci.info.id) || "default" });
+        });
+      });
+      this.log("rx", "modules: " + this.modules.map(m => m.module_id.replace("OPENMOXIE_", "")).join(", "));
+      if (!this.currentModule) this.currentModule = this._homeModule();
+      this.h.onStatus(); return;
+    }
+    const isResponse = this.pendingVolley && msg.event_id === this.pendingVolley.event_id;
+    if (isResponse){ this._clearVolleyTimer(); this.pendingVolley = null; }
+    const text = (msg.output && msg.output.text || "").trim();
+    const actions = Array.isArray(msg.response_actions) ? msg.response_actions.slice() : [];
+    if (msg.response_action && !actions.length) actions.push(msg.response_action);
+    const launch = actions.find(a => a && a.action === "launch" && a.module_id);
+    const wantsSleep = actions.some(a => a && a.action === "sleep");
+    const wantsExit = actions.some(a => a && a.action === "exit_module");
+    this.log("rx", "remote_chat" + (text ? " “" + text + "”" : "") +
+      (launch ? " [launch " + launch.module_id + "]" : "") + (wantsSleep ? " [sleep]" : ""));
+    const after = ()=>{
+      if (wantsSleep){ this.goSleep(); return; }
+      if (launch){
+        this.currentModule = { module_id: launch.module_id, content_id: launch.content_id || "default" };
+        this.sendVolley("prompt"); return;
+      }
+      if (wantsExit){ this.currentModule = this._homeModule(); this.h.onStatus(); }
+      if (this.pendingSpeech){
+        const s = this.pendingSpeech; this.pendingSpeech = null; this.sendVolley("continue", s);
+      }
+    };
+    if (text) this.h.speak(text, { done: after }); else after();
+    this.h.onStatus();
+  }
+}
+</script>
+<script>
+"use strict";
+/* ==================== page wiring ==================== */
+const $ = id => document.getElementById(id);
+const logEl = $("log");
+function log(cls, msg){
+  const line = document.createElement("div"); line.className = cls;
+  const t = new Date().toLocaleTimeString([], {hour12:false});
+  line.textContent = t + "  " + msg;
+  logEl.prepend(line);
+  while (logEl.children.length > 40) logEl.removeChild(logEl.lastChild);
+}
+
+/* ---------- face + speech ---------- */
+const faceEl = $("face"), stageEl = $("stage");
+let mouthTimer = null;
+let prevFaceMode = "offline";
+function setFace(){
+  faceEl.classList.toggle("asleepEyes", robot.mode === "sleep");
+  stageEl.classList.toggle("asleep", robot.mode === "sleep");
+  faceEl.classList.toggle("thinking", !!robot.pendingVolley);
+  if (prevFaceMode === "sleep" && robot.mode === "active"){ faceEl.classList.add("waving"); setTimeout(()=> faceEl.classList.remove("waving"), 1400); }
+  prevFaceMode = robot.mode;
+}
+setInterval(()=>{                       // blink
+  if (robot.mode === "sleep") return;
+  faceEl.classList.add("blink");
+  setTimeout(()=> faceEl.classList.remove("blink"), 130);
+}, 3400);
+
+function speak(text, opts){
+  opts = opts || {};
+  $("saysText").textContent = text;
+  const done = ()=>{ stopMouth(); robot.speaking = false; setFace(); if (opts.done) opts.done(); };
+  if (!("speechSynthesis" in window)){ log("err", "This browser has no voice."); done(); return; }
+  const u = new SpeechSynthesisUtterance(text);
+  u.pitch = 1.35; u.rate = 1.02;
+  const voices = speechSynthesis.getVoices().filter(v => /^en[-_]/i.test(v.lang));
+  u.voice = voices.find(v => /female|samantha|zira|google us english/i.test(v.name)) || voices[0] || null;
+  u.onend = done; u.onerror = done;
+  robot.speaking = true; startMouth(); setFace();
+  speechSynthesis.speak(u);
+}
+function stopSpeaking(){
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+  stopMouth(); robot.speaking = false; setFace();
+}
+function startMouth(){
+  stageEl.classList.add("speaking");
+  const m = $("mouthTalk"); let big = false;
+  stopMouth();
+  mouthTimer = setInterval(()=>{ big = !big; m.setAttribute("ry", big ? 10 : 4); }, 140);
+}
+function stopMouth(){
+  stageEl.classList.remove("speaking");
+  if (mouthTimer){ clearInterval(mouthTimer); mouthTimer = null; }
+}
+if ("speechSynthesis" in window) speechSynthesis.onvoiceschanged = ()=>{};
+
+/* ---------- status ---------- */
+function refreshStatus(){
+  if (window.__watchActive) return;
+  const dot = $("connDot"), txt = $("connText"), mode = $("modeText");
+  if (!robot.connected){ dot.className = "dot off"; txt.textContent = "Offline"; mode.textContent = "Not connected"; }
+  else if (robot.mode === "sleep"){ dot.className = "dot"; txt.textContent = "Online"; mode.textContent = "Asleep 💤"; }
+  else if (robot.pendingVolley){ dot.className = "dot busy"; txt.textContent = "Online"; mode.textContent = "Thinking…"; }
+  else { dot.className = "dot on"; txt.textContent = "Online"; mode.textContent = "Awake"; }
+  $("puppetBadge").textContent = robot.puppet ? "PUPPET ON" : "PUPPET OFF";
+  $("puppetBadge").classList.toggle("hot", robot.puppet);
+  const mb = $("moduleBadge");
+  mb.textContent = robot.currentModule ? robot.currentModule.module_id.replace("OPENMOXIE_", "") : "NO MODULE";
+  setFace();
+}
+
+const robot = new SimRobot({ log, speak, stopSpeaking, onStatus: refreshStatus });
+refreshStatus();
+
+/* ---------- settings ---------- */
+function loadSettings(){
+  try {
+    const s = JSON.parse(localStorage.getItem("simmoxie") || "{}");
+    if (s.host) $("inHost").value = s.host;
+    if (s.port) $("inPort").value = s.port;
+    if (s.device) $("inDevice").value = s.device;
+  } catch(e){}
+  // Served by the OpenMoxie computer itself (e.g. opened on a phone)?
+  // Then that computer is the host — one less thing to type.
+  if (location.hostname && !localStorage.getItem("simmoxie")) $("inHost").value = location.hostname;
+}
+function saveSettings(){
+  localStorage.setItem("simmoxie", JSON.stringify({
+    host: $("inHost").value.trim(), port: $("inPort").value.trim(), device: $("inDevice").value.trim(),
+  }));
+}
+loadSettings();
+
+$("btnConnect").addEventListener("click", ()=>{
+  if (robot.connected || robot.client){ robot.disconnect(); $("btnConnect").textContent = "Connect"; log("sys", "Disconnected."); refreshStatus(); return; }
+  saveSettings();
+  robot.deviceId = $("inDevice").value.trim() || "d_simmoxie";
+  // A silent utterance on a tap unlocks the voice on phones.
+  if ("speechSynthesis" in window){ const u = new SpeechSynthesisUtterance(" "); u.volume = 0; speechSynthesis.speak(u); }
+  robot.connect($("inHost").value.trim() || "192.168.1.172", $("inPort").value.trim() || "9001");
+  $("btnConnect").textContent = "Disconnect";
+});
+
+/* ---------- action buttons ---------- */
+$("btnWake").addEventListener("click", ()=>{ if (robot.connected) robot.wake(); else log("err", "Connect first."); });
+$("btnSleep").addEventListener("click", ()=>{ if (robot.connected) robot.goSleep(); });
+$("btnStop").addEventListener("click", ()=> stopSpeaking());
+document.querySelectorAll("[data-mod]").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    if (!robot.connected){ log("err", "Connect first."); return; }
+    robot.startModule(b.getAttribute("data-mod"));
+  });
+});
+function sendSay(){
+  const v = $("sayInput").value.trim();
+  if (!v) return;
+  $("sayInput").value = "";
+  $("heardText").textContent = "You: “" + v + "”";
+  if (!robot.connected){ log("err", "Connect first."); return; }
+  robot.sayWords(v);
+}
+$("btnSay").addEventListener("click", sendSay);
+$("sayInput").addEventListener("keydown", e=>{ if (e.key === "Enter") sendSay(); });
+
+/* ---------- QR scanning ---------- */
+let scanStream = null, scanTimer = null;
+$("btnScan").addEventListener("click", async ()=>{
+  $("scanOverlay").classList.add("open"); $("scanMsg").textContent = "";
+  try {
+    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    const video = $("scanVideo"); video.srcObject = scanStream; await video.play();
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    scanTimer = setInterval(()=>{
+      if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
+      canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = (typeof jsQR === "function") ? jsQR(img.data, img.width, img.height) : null;
+      if (code && code.data){
+        const res = parseMigrationQR(code.data);
+        stopScan();
+        if (res.error){ log("err", res.error); $("scanMsg").textContent = res.error; $("scanOverlay").classList.add("open"); return; }
+        $("inHost").value = res.host; saveSettings();
+        log("sys", "QR read: server is " + res.host + " (robot port " + res.tlsPort + "). Host filled in — tap Connect.");
+      }
+    }, 250);
+  } catch(e){
+    $("scanMsg").textContent = "Camera not available: " + e.message;
+  }
+});
+function stopScan(){
+  if (scanTimer){ clearInterval(scanTimer); scanTimer = null; }
+  if (scanStream){ scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
+  $("scanOverlay").classList.remove("open");
+}
+$("btnScanCancel").addEventListener("click", stopScan);
+
+/* ---------- QR from a picture: paste, drop, or pick a file ---------- */
+function applyQrText(text){
+  const res = parseMigrationQR(text);
+  if (res.error){ log("err", res.error); return; }
+  $("inHost").value = res.host; saveSettings();
+  log("sys", "QR read: server is " + res.host + " (robot port " + res.tlsPort + "). Host filled in — tap Connect.");
+}
+function decodeQrFromImage(img){
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  for (const s of [1, 0.5]){
+    const w = Math.max(1, Math.round(img.width * s)), h = Math.max(1, Math.round(img.height * s));
+    canvas.width = w; canvas.height = h;
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h);
+    const code = jsQR(data.data, w, h, { inversionAttempts: "attemptBoth" });
+    if (code && code.data) return code.data;
+  }
+  return null;
+}
+async function qrFromBlob(blob, photoFallback){
+  if (!blob) return;
+  if (typeof jsQR !== "function"){ log("err", "QR reader still loading — try again in a second."); return; }
+  let bmp = null;
+  try { bmp = await createImageBitmap(blob); }
+  catch(e){
+    bmp = await new Promise((resolve, reject)=>{
+      const im = new Image();
+      im.onload = ()=> resolve(im);
+      im.onerror = reject;
+      im.src = URL.createObjectURL(blob);
+    });
+  }
+  const text = decodeQrFromImage(bmp);
+  if (text) applyQrText(text);
+  else if (photoFallback){ showPhoto(blob); log("sys", "No QR code in that picture — she's showing it on her face instead."); }
+  else log("err", "No QR found in that picture. Snip tighter around the code and try again.");
+}
+$("btnQrPic").addEventListener("click", ()=> $("qrFile").click());
+$("qrFile").addEventListener("change", e=>{
+  const f = e.target.files && e.target.files[0];
+  qrFromBlob(f);
+  e.target.value = "";
+});
+document.addEventListener("paste", e=>{
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+  const items = (e.clipboardData && e.clipboardData.items) || [];
+  for (const it of items){
+    if (it.type && it.type.indexOf("image/") === 0){ e.preventDefault(); qrFromBlob(it.getAsFile(), true); return; }
+  }
+});
+const qrDropBox = $("qrDrop");
+["dragenter", "dragover"].forEach(ev => qrDropBox.addEventListener(ev, e=>{ e.preventDefault(); qrDropBox.classList.add("over"); }));
+["dragleave", "drop"].forEach(ev => qrDropBox.addEventListener(ev, e=>{ e.preventDefault(); qrDropBox.classList.remove("over"); }));
+qrDropBox.addEventListener("drop", e=>{
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) qrFromBlob(f, true);
+});
+qrDropBox.addEventListener("click", ()=> $("qrFile").click());
+
+/* ============ more life: wandering eyes + head tilts ============ */
+const pupilEls = document.querySelectorAll(".pupil");
+function lookAt(dx, dy){ pupilEls.forEach(p=>{ p.style.transform = "translate(" + dx + "px," + dy + "px)"; }); }
+setInterval(()=>{
+  if (window.__watchActive){ return; }
+  if (robot.mode === "sleep"){ lookAt(0, 0); return; }
+  if (robot.speaking){ lookAt(0, -1); return; }
+  lookAt([-4, 0, 4][Math.floor(Math.random() * 3)], [-2, 0, 1][Math.floor(Math.random() * 3)]);
+}, 2600);
+setInterval(()=>{
+  if (window.__watchActive || robot.mode === "sleep"){ faceEl.style.transform = ""; return; }
+  faceEl.style.transform = ["", "rotate(1.6deg)", "rotate(-1.6deg)"][Math.floor(Math.random() * 3)];
+}, 5200);
+
+/* ============ photos on her face ============ */
+let photoURL = null;
+function showPhoto(blob){
+  if (!blob) return;
+  if (photoURL) URL.revokeObjectURL(photoURL);
+  photoURL = URL.createObjectURL(blob);
+  const img = $("photoImg");
+  img.setAttribute("href", photoURL);
+  img.style.display = "block";
+  $("btnPhotoClose").style.display = "";
+  log("sys", "Photo on her face. Tap Close photo to bring her face back.");
+}
+function hidePhoto(){
+  $("photoImg").style.display = "none";
+  $("btnPhotoClose").style.display = "none";
+  if (photoURL){ URL.revokeObjectURL(photoURL); photoURL = null; }
+}
+$("btnPhoto").addEventListener("click", ()=> $("photoFile").click());
+$("photoFile").addEventListener("change", e=>{
+  const f = e.target.files && e.target.files[0];
+  if (f) showPhoto(f);
+  e.target.value = "";
+});
+$("btnPhotoClose").addEventListener("click", hidePhoto);
+
+/* ============ watch mode: mirror another sim live ============ */
+const watch = { active: false, client: null, id: "" };
+$("btnWatch").addEventListener("click", ()=>{ watch.active ? stopWatch() : startWatch(); });
+function startWatch(){
+  if (typeof mqtt === "undefined"){ log("err", "MQTT library still loading — try again in a second."); return; }
+  const id = $("inWatchId").value.trim();
+  if (!id){ log("err", "Type the ID of the robot to watch first."); return; }
+  if (robot.connected || robot.client){ robot.disconnect(); $("btnConnect").textContent = "Connect"; log("sys", "Robot disconnected so this screen can watch instead."); }
+  const host = $("inHost").value.trim() || "192.168.1.172";
+  const port = $("inPort").value.trim() || "9001";
+  watch.id = id;
+  watch.client = mqtt.connect("ws://" + host + ":" + port,
+    { clientId: "simwatcher-" + Math.random().toString(16).slice(2, 8), reconnectPeriod: 2000 });
+  watch.client.on("connect", ()=>{
+    watch.active = true;
+    window.__watchActive = true;
+    $("btnWatch").textContent = "⏹ Stop watching";
+    $("connDot").className = "dot on"; $("connText").textContent = "Watching";
+    watch.client.subscribe(["/devices/" + id + "/commands/#", "/devices/" + id + "/config", "/devices/" + id + "/state"]);
+    log("sys", "Watching " + id + " — her face, words and naps will appear here live.");
+  });
+  watch.client.on("message", onWatchMessage);
+  watch.client.on("error", e=> log("err", "Watch error: " + (e && e.message || e)));
+}
+function stopWatch(){
+  if (watch.client){ try { watch.client.end(true); } catch(e){} watch.client = null; }
+  watch.active = false;
+  window.__watchActive = false;
+  $("btnWatch").textContent = "📺 Watch live";
+  faceEl.classList.remove("asleepEyes");
+  stageEl.classList.remove("asleep");
+  stopMouth();
+  refreshStatus();
+  log("sys", "Stopped watching.");
+}
+function watchSleep(sleeping){
+  faceEl.classList.toggle("asleepEyes", sleeping);
+  stageEl.classList.toggle("asleep", sleeping);
+  $("modeText").textContent = sleeping ? "Asleep 💤 (watching)" : "Awake (watching)";
+}
+function mirrorSay(text){
+  watchSleep(false);
+  $("saysText").textContent = text;
+  log("rx", "watch: “" + text + "”");
+  startMouth();
+  const ms = Math.max(1500, Math.min(9000, 1100 + text.length * 55));
+  setTimeout(()=> stopMouth(), ms);
+}
+function onWatchMessage(topic, payload){
+  const parts = topic.split("/");
+  const kind = parts[3], name = parts[4] || "";
+  let msg = null;
+  try { msg = JSON.parse(payload.toString()); } catch(e){}
+  if (!msg) return;
+  if (kind === "state"){ if (msg.mode) watchSleep(msg.mode === "sleep"); return; }
+  if (kind === "config"){
+    const on = msg.moxie_mode === "TELEHEALTH";
+    $("puppetBadge").textContent = on ? "PUPPET ON" : "PUPPET OFF";
+    $("puppetBadge").classList.toggle("hot", on);
+    return;
+  }
+  if (kind !== "commands") return;
+  if (name === "wakeup"){ watchSleep(false); log("rx", "watch: she woke up"); return; }
+  if (name === "telehealth" && msg.message && msg.message.action === "INTERRUPT"){ stopMouth(); return; }
+  let text = "";
+  if (name === "remote_chat" && msg.output && msg.output.text) text = (msg.output.text || "").trim();
+  if (name === "telehealth" && msg.message && msg.message.action === "PLAY_OUTPUT" && msg.message.output) text = (msg.message.output.text || "").trim();
+  if (text) mirrorSay(text);
+}
+
+log("sys", "Sim Moxie ready. Set the host, then tap Connect — or scan the migration QR.");
+</script>
+</body>
+</html>
